@@ -17,21 +17,21 @@ const PAYMENT_METHODS = ["현금", "체크카드", "신용카드", "계좌이체
 
 /* ===== Supabase 공용 DB 연동 ===== */
 /* config.js 에서 SUPABASE_URL, SUPABASE_ANON_KEY 를 설정하세요. */
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const db_client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 async function dbAll() {
-  const { data, error } = await supabase.from("transactions").select("*").order("date", { ascending: false });
+  const { data, error } = await db_client.from("transactions").select("*").order("date", { ascending: false });
   if (error) { console.error(error); return []; }
   return data.map(mapTxnFromDB);
 }
 
 async function dbPut(item) {
-  const { error } = await supabase.from("transactions").upsert(mapTxnToDB(item));
+  const { error } = await db_client.from("transactions").upsert(mapTxnToDB(item));
   if (error) console.error(error);
 }
 
 async function dbDelete(id) {
-  const { error } = await supabase.from("transactions").delete().eq("id", id);
+  const { error } = await db_client.from("transactions").delete().eq("id", id);
   if (error) console.error(error);
 }
 
@@ -66,39 +66,39 @@ function mapTxnFromDB(r) {
 }
 
 async function getMeta(key, fallback) {
-  const { data, error } = await supabase.from("meta").select("value").eq("key", key).maybeSingle();
+  const { data, error } = await db_client.from("meta").select("value").eq("key", key).maybeSingle();
   if (error || !data) return fallback;
   return data.value;
 }
 
 async function setMeta(key, value) {
-  const { error } = await supabase.from("meta").upsert({ key, value });
+  const { error } = await db_client.from("meta").upsert({ key, value });
   if (error) console.error(error);
 }
 
 async function dbAllAssets() {
-  const { data, error } = await supabase.from("assets").select("*");
+  const { data, error } = await db_client.from("assets").select("*");
   if (error) { console.error(error); return []; }
   return data;
 }
 
 async function dbPutAsset(asset) {
-  const { error } = await supabase.from("assets").upsert(asset);
+  const { error } = await db_client.from("assets").upsert(asset);
   if (error) console.error(error);
 }
 
 async function dbDeleteAsset(id) {
-  const { error } = await supabase.from("assets").delete().eq("id", id);
+  const { error } = await db_client.from("assets").delete().eq("id", id);
   if (error) console.error(error);
 }
 
 async function dbPutSnapshot(snap) {
-  const { error } = await supabase.from("asset_snapshots").upsert(snap);
+  const { error } = await db_client.from("asset_snapshots").upsert(snap);
   if (error) console.error(error);
 }
 
 async function dbAllSnapshots() {
-  const { data, error } = await supabase.from("asset_snapshots").select("*").order("date", { ascending: true });
+  const { data, error } = await db_client.from("asset_snapshots").select("*").order("date", { ascending: true });
   if (error) { console.error(error); return []; }
   return data;
 }

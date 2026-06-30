@@ -1,6 +1,6 @@
 /* ===== 데이터 정의 ===== */
 const CATEGORIES = {
-  "식비": ["외식", "장보기", "배달"],
+  "식비": ["외식", "장보기", "배달", "배달앱", "카페"],
   "교통": ["대중교통", "주유", "주차", "톨비", "차량유지비", "보험비"],
   "주거": ["집대출", "관리비", "공과금"],
   "통신": ["휴대폰", "인터넷"],
@@ -106,12 +106,15 @@ async function dbAllSnapshots() {
 /* ===== 전역 상태 ===== */
 const state = {
   tab: "home",
+  locked: true,
+  pinInput: "",
   txns: [],
-  viewMonth: new Date().toISOString().slice(0, 7), // YYYY-MM
+  viewMonth: new Date().toISOString().slice(0, 7),
   goals: { savingsRatio: 20 },
   assets: [],
   snapshots: [],
   assetDraft: { name: "", type: "현금", balance: "" },
+  editingTxn: null,
   draft: {
     type: "지출",
     amount: "",
@@ -164,6 +167,11 @@ function summarize(ym) {
 const app = document.getElementById("app");
 
 function render() {
+  if (state.locked) {
+    app.innerHTML = renderLock();
+    bindLockEvents();
+    return;
+  }
   let html = "";
   if (state.tab === "home") html = renderHome();
   else if (state.tab === "input") html = renderInput();
@@ -173,6 +181,56 @@ function render() {
 
   app.innerHTML = html + renderTabbar();
   bindEvents();
+}
+
+function renderLock() {
+  const dots = "●".repeat(state.pinInput.length) + "○".repeat(4 - state.pinInput.length);
+  const shake = state.pinError ? "style='animation:shake 0.3s;'" : "";
+  return `
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:24px;">
+    <p style="font-size:28px;margin:0;">🏠</p>
+    <h2 style="margin:0;">우리집 가계부</h2>
+    <p style="font-size:32px;letter-spacing:12px;margin:0;" ${shake}>${dots}</p>
+    ${state.pinError ? '<p style="font-size:13px;color:var(--danger);margin:0;">PIN이 틀렸어요</p>' : '<p style="font-size:13px;color:var(--text-secondary);margin:0;">PIN 4자리를 입력하세요</p>'}
+    <div style="display:grid;grid-template-columns:repeat(3,72px);gap:12px;">
+      ${[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(k => `
+        <button data-pin="${k}" style="width:72px;height:72px;border-radius:50%;border:1px solid var(--border);background:var(--card);font-size:22px;cursor:pointer;${k===""?"visibility:hidden;":""}">
+          ${k}
+        </button>`).join("")}
+    </div>
+  </div>`;
+}
+
+function bindLockEvents() {
+  document.querySelectorAll("[data-pin]").forEach(btn => {
+    btn.onclick = async () => {
+      const val = btn.dataset.pin;
+      if (val === "⌫") {
+        state.pinInput = state.pinInput.slice(0, -1);
+      } else if (val !== "") {
+        state.pinInput += val;
+        if (state.pinInput.length === 4) {
+          const savedPin = await getMeta("pin", null);
+          if (!savedPin) {
+            await setMeta("pin", state.pinInput);
+            state.locked = false;
+            state.pinInput = "";
+          } else if (state.pinInput === savedPin) {
+            state.locked = false;
+            state.pinInput = "";
+          } else {
+            state.pinError = true;
+            state.pinInput = "";
+            render();
+            setTimeout(() => { state.pinError = false; render(); }, 600);
+            return;
+          }
+        }
+      }
+      state.pinError = false;
+      render();
+    };
+  });
 }
 
 function renderTabbar() {
@@ -220,10 +278,14 @@ function renderHome() {
         <div class="left">
           <div>
             <p class="name">${t.categoryMain} &gt; ${t.categorySub}</p>
-            <p class="meta">${t.date} · ${t.payment}</p>
+            <p class="meta">${t.date} · ${t.payment}${t.memo ? " · " + t.memo : ""}</p>
           </div>
         </div>
-        <p class="amount ${t.type === "수입" ? "income" : "expense"}">${t.type === "수입" ? "+" : "-"}${fmt(t.amount)}</p>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <p class="amount ${t.type === "수입" ? "income" : "expense"}">${t.type === "수입" ? "+" : "-"}${fmt(t.amount)}</p>
+          <button data-edit="${t.id}" style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:var(--text-secondary);">수정</button>
+          <button data-del="${t.id}" style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:var(--danger);">삭제</button>
+        </div>
       </div>`).join("")}
   </div>
   <div class="comment-card">
@@ -251,11 +313,14 @@ function buildComment(income, expense, savings, savingsRatio, catTotals) {
 
 function renderInput() {
   const d = state.draft;
-  const isExpense = d.type === "지출";
+  const isEditing = !!state.editingTxn;
   const subOptions = CATEGORIES[d.categoryMain] || [];
 
   return `
-  <header class="page-header"><h1>거래 입력</h1></header>
+  <header class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <h1>${isEditing ? "거래 수정" : "거래 입력"}</h1>
+    ${isEditing ? '<button id="cancelEditBtn" style="font-size:13px;color:var(--text-secondary);border:none;background:none;cursor:pointer;">취소</button>' : ""}
+  </header>
   <div class="type-toggle">
     <button data-type="지출" class="${d.type === "지출" ? "active expense" : ""}">지출</button>
     <button data-type="수입" class="${d.type === "수입" ? "active income" : ""}">수입</button>
@@ -298,7 +363,7 @@ function renderInput() {
     </div>
   </div>
   <div class="section">
-    <button class="btn-primary" id="saveBtn">저장</button>
+    <button class="btn-primary" id="saveBtn">${isEditing ? "수정 완료" : "저장"}</button>
   </div>
   `;
 }
@@ -457,7 +522,34 @@ function bindEvents() {
     btn.onclick = () => { state.tab = btn.dataset.tab; render(); };
   });
 
+  // 홈: 수정/삭제 버튼
+  document.querySelectorAll("[data-edit]").forEach(btn => {
+    btn.onclick = () => {
+      const t = state.txns.find(x => x.id === btn.dataset.edit);
+      if (!t) return;
+      state.editingTxn = t;
+      state.draft = { type: t.type, amount: t.amount, date: t.date, categoryMain: t.categoryMain, categorySub: t.categorySub, payment: t.payment, memo: t.memo || "", isFixed: t.isFixed };
+      state.tab = "input";
+      render();
+    };
+  });
+  document.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm("이 거래를 삭제할까요?")) return;
+      await dbDelete(btn.dataset.del);
+      state.txns = state.txns.filter(x => x.id !== btn.dataset.del);
+      render();
+    };
+  });
+
   if (state.tab === "input") {
+    const cancelBtn = document.getElementById("cancelEditBtn");
+    if (cancelBtn) cancelBtn.onclick = () => {
+      state.editingTxn = null;
+      state.draft = { type: "지출", amount: "", date: new Date().toISOString().slice(0, 10), categoryMain: "식비", categorySub: "외식", payment: "신용카드", memo: "", isFixed: false };
+      state.tab = "home";
+      render();
+    };
     document.querySelectorAll("[data-type]").forEach(btn => {
       btn.onclick = () => { state.draft.type = btn.dataset.type; render(); };
     });
@@ -555,22 +647,31 @@ async function saveTxn() {
   const d = state.draft;
   const amount = parseFloat(d.amount);
   if (!amount || amount <= 0) { alert("금액을 입력해주세요."); return; }
-  const item = {
-    id: crypto.randomUUID(),
-    type: d.type,
-    amount,
-    date: d.date,
-    categoryMain: d.categoryMain,
-    categorySub: d.categorySub,
-    payment: d.payment,
-    memo: d.memo,
-    isFixed: d.isFixed,
-    createdAt: new Date().toISOString()
-  };
-  await dbPut(item);
-  state.txns.push(item);
-  state.draft.amount = "";
-  state.draft.memo = "";
+
+  if (state.editingTxn) {
+    // 수정 모드
+    const updated = { ...state.editingTxn, type: d.type, amount, date: d.date, categoryMain: d.categoryMain, categorySub: d.categorySub, payment: d.payment, memo: d.memo, isFixed: d.isFixed };
+    await dbPut(updated);
+    state.txns = state.txns.map(t => t.id === updated.id ? updated : t);
+    state.editingTxn = null;
+  } else {
+    // 신규 입력
+    const item = {
+      id: crypto.randomUUID(),
+      type: d.type,
+      amount,
+      date: d.date,
+      categoryMain: d.categoryMain,
+      categorySub: d.categorySub,
+      payment: d.payment,
+      memo: d.memo,
+      isFixed: d.isFixed,
+      createdAt: new Date().toISOString()
+    };
+    await dbPut(item);
+    state.txns.push(item);
+  }
+  state.draft = { type: "지출", amount: "", date: new Date().toISOString().slice(0, 10), categoryMain: "식비", categorySub: "외식", payment: "신용카드", memo: "", isFixed: false };
   state.tab = "home";
   render();
 }

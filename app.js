@@ -114,6 +114,7 @@ const state = {
   assets: [],
   snapshots: [],
   assetDraft: { name: "", type: "현금", balance: "" },
+  editingAssetId: null,
   editingTxn: null,
   draft: {
     type: "지출",
@@ -139,7 +140,9 @@ function monthLabel(ym) {
 function shiftMonth(ym, delta) {
   const [y, m] = ym.split("-").map(Number);
   const d = new Date(y, m - 1 + delta, 1);
-  return d.toISOString().slice(0, 7);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}`;
 }
 
 function monthTxns(ym) {
@@ -459,8 +462,14 @@ function renderAssets() {
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          <p class="amount">${a.type === "부채" ? "-" : ""}${fmt(a.balance)}원</p>
-          <span data-del-asset="${a.id}" style="color:var(--text-secondary);font-size:13px;cursor:pointer;">삭제</span>
+          ${state.editingAssetId === a.id
+            ? `<input type="number" id="editAssetBalance" value="${a.balance}" style="width:100px;text-align:right;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:13px;" />
+               <button data-save-asset="${a.id}" style="font-size:12px;padding:2px 8px;border:none;border-radius:6px;background:var(--blue);color:white;cursor:pointer;">저장</button>
+               <button data-cancel-asset style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;">취소</button>`
+            : `<p class="amount">${a.type === "부채" ? "-" : ""}${fmt(a.balance)}원</p>
+               <button data-edit-asset="${a.id}" style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:var(--text-secondary);">수정</button>
+               <span data-del-asset="${a.id}" style="color:var(--danger);font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">삭제</span>`
+          }
         </div>
       </div>`).join("")}
   </div>
@@ -592,6 +601,29 @@ function bindEvents() {
     if (balanceEl) balanceEl.oninput = (e) => state.assetDraft.balance = e.target.value;
     const addBtn = document.getElementById("addAssetBtn");
     if (addBtn) addBtn.onclick = saveAsset;
+
+    // 수정 버튼
+    document.querySelectorAll("[data-edit-asset]").forEach(el => {
+      el.onclick = () => { state.editingAssetId = el.dataset.editAsset; render(); };
+    });
+    // 수정 저장
+    document.querySelectorAll("[data-save-asset]").forEach(el => {
+      el.onclick = async () => {
+        const newBal = parseFloat(document.getElementById("editAssetBalance").value);
+        if (isNaN(newBal)) return;
+        const asset = state.assets.find(a => a.id === el.dataset.saveAsset);
+        if (!asset) return;
+        asset.balance = newBal;
+        await dbPutAsset(asset);
+        await saveSnapshot();
+        state.editingAssetId = null;
+        render();
+      };
+    });
+    // 수정 취소
+    const cancelAsset = document.querySelector("[data-cancel-asset]");
+    if (cancelAsset) cancelAsset.onclick = () => { state.editingAssetId = null; render(); };
+
     document.querySelectorAll("[data-del-asset]").forEach(el => {
       el.onclick = async () => {
         await dbDeleteAsset(el.dataset.delAsset);

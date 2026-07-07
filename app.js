@@ -13,6 +13,14 @@ const CATEGORIES = {
   "저축/투자": ["적금", "투자"],
   "기타": ["기타"]
 };
+
+const INCOME_CATEGORIES = {
+  "급여": ["본봉", "상여금/보너스"],
+  "부수입": ["프리랜서", "부업"],
+  "금융수익": ["이자", "배당금", "주식매도"],
+  "정부지원": ["아동수당", "육아휴직급여", "보조금"],
+  "기타수입": ["용돈", "경조사수입", "환급금", "기타"]
+};
 const PAYMENT_METHODS = ["현금", "체크카드", "신용카드", "계좌이체", "간편결제", "청주페이"];
 
 /* ===== Supabase 공용 DB 연동 ===== */
@@ -317,7 +325,8 @@ function buildComment(income, expense, savings, savingsRatio, catTotals) {
 function renderInput() {
   const d = state.draft;
   const isEditing = !!state.editingTxn;
-  const subOptions = CATEGORIES[d.categoryMain] || [];
+  const activeCats = d.type === "수입" ? INCOME_CATEGORIES : CATEGORIES;
+  const subOptions = activeCats[d.categoryMain] || Object.values(activeCats)[0] || [];
 
   return `
   <header class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
@@ -341,7 +350,7 @@ function renderInput() {
     <div class="field-row">
       <label>대분류</label>
       <select id="categoryMain">
-        ${Object.keys(CATEGORIES).map(c => `<option value="${c}" ${c === d.categoryMain ? "selected" : ""}>${c}</option>`).join("")}
+        ${Object.keys(activeCats).map(c => `<option value="${c}" ${c === d.categoryMain ? "selected" : ""}>${c}</option>`).join("")}
       </select>
     </div>
     <div class="field-row">
@@ -560,7 +569,13 @@ function bindEvents() {
       render();
     };
     document.querySelectorAll("[data-type]").forEach(btn => {
-      btn.onclick = () => { state.draft.type = btn.dataset.type; render(); };
+      btn.onclick = () => {
+        state.draft.type = btn.dataset.type;
+        const cats = btn.dataset.type === "수입" ? INCOME_CATEGORIES : CATEGORIES;
+        state.draft.categoryMain = Object.keys(cats)[0];
+        state.draft.categorySub = Object.values(cats)[0][0];
+        render();
+      };
     });
     const amountEl = document.getElementById("amount");
     if (amountEl) amountEl.oninput = (e) => state.draft.amount = e.target.value;
@@ -569,7 +584,8 @@ function bindEvents() {
     const catMain = document.getElementById("categoryMain");
     if (catMain) catMain.onchange = (e) => {
       state.draft.categoryMain = e.target.value;
-      state.draft.categorySub = CATEGORIES[e.target.value][0];
+      const cats = state.draft.type === "수입" ? INCOME_CATEGORIES : CATEGORIES;
+      state.draft.categorySub = (cats[e.target.value] || [])[0] || "";
       render();
     };
     const catSub = document.getElementById("categorySub");

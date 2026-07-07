@@ -121,7 +121,7 @@ const state = {
   goals: { savingsRatio: 20 },
   assets: [],
   snapshots: [],
-  assetDraft: { name: "", type: "현금", balance: "" },
+  assetDraft: { name: "", type: "현금", balance: "", currency: "KRW", exchangeRate: "" },
   editingAssetId: null,
   editingTxn: null,
   draft: {
@@ -440,20 +440,25 @@ function renderStats() {
   `;
 }
 
+function assetKRW(a) {
+  if (a.currency === "USD" && a.exchangeRate > 0) return a.balance * a.exchangeRate;
+  return a.balance;
+}
+
 function renderAssets() {
   const assets = state.assets;
-  const total = assets.reduce((s, a) => s + (a.type === "부채" ? -a.balance : a.balance), 0);
+  const total = assets.reduce((s, a) => s + (a.type === "부채" ? -assetKRW(a) : assetKRW(a)), 0);
   const snaps = state.snapshots;
   const prev = snaps.length >= 2 ? snaps[snaps.length - 2] : null;
   const diff = prev ? total - prev.total : null;
-
   const typeIcon = { "현금": "💵", "예적금": "🏦", "투자": "📈", "부채": "📉" };
+  const d = state.assetDraft;
 
   return `
   <header class="page-header"><h1>자산 현황</h1></header>
   <div class="section">
     <div class="metric-card" style="margin-bottom:12px;">
-      <p class="label">순자산</p>
+      <p class="label">순자산 (원화 환산)</p>
       <p class="value" style="font-size:22px;">${fmt(total)}원</p>
       ${diff !== null ? `<p style="font-size:12px;margin:4px 0 0;color:${diff >= 0 ? "var(--success)" : "var(--danger)"};">전월 대비 ${diff >= 0 ? "+" : ""}${fmt(diff)}원</p>` : ""}
     </div>
@@ -461,43 +466,70 @@ function renderAssets() {
   <div class="section">
     <h3>자산 목록</h3>
     ${assets.length === 0 ? '<p class="empty-state">등록된 자산이 없어요. 아래에서 추가해보세요.</p>' :
-      assets.map(a => `
-      <div class="list-row">
-        <div class="left">
-          <span style="font-size:18px;">${typeIcon[a.type] || "💼"}</span>
-          <div>
-            <p class="name">${a.name}</p>
-            <p class="meta">${a.type}</p>
+      assets.map(a => {
+        const krw = assetKRW(a);
+        const isUSD = a.currency === "USD";
+        const amountLabel = isUSD
+          ? `$${a.balance.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2})} · ${fmt(krw)}원`
+          : `${fmt(a.balance)}원`;
+        return `
+        <div class="list-row">
+          <div class="left">
+            <span style="font-size:18px;">${typeIcon[a.type] || "💼"}</span>
+            <div>
+              <p class="name">${a.name}</p>
+              <p class="meta">${a.type}${isUSD ? " · USD" : ""}</p>
+            </div>
           </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          ${state.editingAssetId === a.id
-            ? `<input type="number" id="editAssetBalance" value="${a.balance}" style="width:100px;text-align:right;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:13px;" />
-               <button data-save-asset="${a.id}" style="font-size:12px;padding:2px 8px;border:none;border-radius:6px;background:var(--blue);color:white;cursor:pointer;">저장</button>
-               <button data-cancel-asset style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;">취소</button>`
-            : `<p class="amount">${a.type === "부채" ? "-" : ""}${fmt(a.balance)}원</p>
-               <button data-edit-asset="${a.id}" style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:var(--text-secondary);">수정</button>
-               <span data-del-asset="${a.id}" style="color:var(--danger);font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">삭제</span>`
-          }
-        </div>
-      </div>`).join("")}
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${state.editingAssetId === a.id
+              ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+                   <input type="number" id="editAssetBalance" value="${a.balance}" placeholder="${isUSD ? "달러 금액" : "원화 금액"}" style="width:110px;text-align:right;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:13px;" />
+                   ${isUSD ? `<input type="number" id="editAssetRate" value="${a.exchangeRate || ""}" placeholder="환율(예:1380)" style="width:110px;text-align:right;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:13px;" />` : ""}
+                   <div style="display:flex;gap:4px;">
+                     <button data-save-asset="${a.id}" style="font-size:12px;padding:2px 8px;border:none;border-radius:6px;background:var(--blue);color:white;cursor:pointer;">저장</button>
+                     <button data-cancel-asset style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;">취소</button>
+                   </div>
+                 </div>`
+              : `<div style="text-align:right;">
+                   <p class="amount" style="margin:0;">${a.type === "부채" ? "-" : ""}${amountLabel}</p>
+                   ${isUSD && a.exchangeRate ? `<p style="font-size:11px;color:var(--text-secondary);margin:0;">환율 ${a.exchangeRate.toLocaleString()}원</p>` : ""}
+                 </div>
+                 <button data-edit-asset="${a.id}" style="font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:var(--text-secondary);">수정</button>
+                 <span data-del-asset="${a.id}" style="color:var(--danger);font-size:12px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;">삭제</span>`
+            }
+          </div>
+        </div>`;
+      }).join("")}
   </div>
   <div class="section">
     <h3>자산 추가</h3>
     <div class="field-row">
       <label>이름</label>
-      <input type="text" id="assetName" placeholder="예: 청주은행 예금" value="${state.assetDraft.name}" />
+      <input type="text" id="assetName" placeholder="예: TSLA 주식" value="${d.name}" />
     </div>
     <div class="field-row">
       <label>종류</label>
       <select id="assetType">
-        ${["현금", "예적금", "투자", "부채"].map(t => `<option value="${t}" ${t === state.assetDraft.type ? "selected" : ""}>${t}</option>`).join("")}
+        ${["현금", "예적금", "투자", "부채"].map(t => `<option value="${t}" ${t === d.type ? "selected" : ""}>${t}</option>`).join("")}
       </select>
     </div>
     <div class="field-row">
-      <label>잔액</label>
-      <input type="number" id="assetBalance" placeholder="0" value="${state.assetDraft.balance}" />
+      <label>통화</label>
+      <select id="assetCurrency">
+        <option value="KRW" ${d.currency === "KRW" ? "selected" : ""}>원화 (KRW)</option>
+        <option value="USD" ${d.currency === "USD" ? "selected" : ""}>달러 (USD)</option>
+      </select>
     </div>
+    <div class="field-row">
+      <label>${d.currency === "USD" ? "달러 금액" : "잔액"}</label>
+      <input type="number" id="assetBalance" placeholder="0" value="${d.balance}" />
+    </div>
+    ${d.currency === "USD" ? `
+    <div class="field-row">
+      <label>환율</label>
+      <input type="number" id="assetRate" placeholder="예: 1380" value="${d.exchangeRate}" />
+    </div>` : ""}
     <button class="btn-primary" id="addAssetBtn">추가</button>
   </div>
   ${snaps.length > 1 ? `
@@ -505,13 +537,13 @@ function renderAssets() {
     <h3>순자산 변화 추이</h3>
     ${snaps.slice(-6).reverse().map((s, i, arr) => {
       const next = arr[i + 1];
-      const d = next ? s.total - next.total : null;
+      const diff2 = next ? s.total - next.total : null;
       return `
       <div class="list-row">
         <p class="name">${s.date}</p>
         <div style="display:flex;align-items:center;gap:8px;">
           <p class="amount">${fmt(s.total)}원</p>
-          ${d !== null ? `<span style="font-size:11px;color:${d >= 0 ? "var(--success)" : "var(--danger)"};">${d >= 0 ? "+" : ""}${fmt(d)}</span>` : ""}
+          ${diff2 !== null ? `<span style="font-size:11px;color:${diff2 >= 0 ? "var(--success)" : "var(--danger)"};">${diff2 >= 0 ? "+" : ""}${fmt(diff2)}</span>` : ""}
         </div>
       </div>`;
     }).join("")}
@@ -615,6 +647,10 @@ function bindEvents() {
     if (typeEl) typeEl.onchange = (e) => state.assetDraft.type = e.target.value;
     const balanceEl = document.getElementById("assetBalance");
     if (balanceEl) balanceEl.oninput = (e) => state.assetDraft.balance = e.target.value;
+    const currencyEl = document.getElementById("assetCurrency");
+    if (currencyEl) currencyEl.onchange = (e) => { state.assetDraft.currency = e.target.value; render(); };
+    const rateEl = document.getElementById("assetRate");
+    if (rateEl) rateEl.oninput = (e) => state.assetDraft.exchangeRate = e.target.value;
     const addBtn = document.getElementById("addAssetBtn");
     if (addBtn) addBtn.onclick = saveAsset;
 
@@ -630,6 +666,8 @@ function bindEvents() {
         const asset = state.assets.find(a => a.id === el.dataset.saveAsset);
         if (!asset) return;
         asset.balance = newBal;
+        const rateInput = document.getElementById("editAssetRate");
+        if (rateInput) asset.exchangeRate = parseFloat(rateInput.value) || asset.exchangeRate;
         await dbPutAsset(asset);
         await saveSnapshot();
         state.editingAssetId = null;
@@ -672,16 +710,17 @@ async function saveAsset() {
   const d = state.assetDraft;
   const balance = parseFloat(d.balance);
   if (!d.name || isNaN(balance)) { alert("이름과 잔액을 입력해주세요."); return; }
-  const item = { id: crypto.randomUUID(), name: d.name, type: d.type, balance };
+  const exchangeRate = d.currency === "USD" ? parseFloat(d.exchangeRate) || 0 : 0;
+  const item = { id: crypto.randomUUID(), name: d.name, type: d.type, balance, currency: d.currency || "KRW", exchangeRate };
   await dbPutAsset(item);
   state.assets.push(item);
-  state.assetDraft = { name: "", type: "현금", balance: "" };
+  state.assetDraft = { name: "", type: "현금", balance: "", currency: "KRW", exchangeRate: "" };
   await saveSnapshot();
   render();
 }
 
 async function saveSnapshot() {
-  const total = state.assets.reduce((s, a) => s + (a.type === "부채" ? -a.balance : a.balance), 0);
+  const total = state.assets.reduce((s, a) => s + (a.type === "부채" ? -assetKRW(a) : assetKRW(a)), 0);
   const today = new Date().toISOString().slice(0, 10);
   const snap = { date: today, total };
   await dbPutSnapshot(snap);

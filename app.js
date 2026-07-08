@@ -124,6 +124,7 @@ const state = {
   assetDraft: { name: "", type: "현금", balance: "", currency: "KRW", exchangeRate: "" },
   editingAssetId: null,
   editingTxn: null,
+  homeFilter: null, // null=전체, "수입", "지출", "저축/투자"
   draft: {
     type: "지출",
     amount: "",
@@ -260,19 +261,49 @@ function renderTabbar() {
 function renderHome() {
   const { income, expense, savings, catTotals } = summarize(state.viewMonth);
   const savingsRatio = income > 0 ? (savings / income) * 100 : 0;
-  const recent = [...state.txns].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+  const f = state.homeFilter;
+
+  // 필터에 따라 목록 결정
+  let filtered = [...state.txns]
+    .filter(t => t.date.slice(0, 7) === state.viewMonth)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  if (f === "수입") filtered = filtered.filter(t => t.type === "수입");
+  else if (f === "지출") filtered = filtered.filter(t => t.type === "지출" && t.categoryMain !== "저축/투자");
+  else if (f === "저축/투자") filtered = filtered.filter(t => t.categoryMain === "저축/투자");
+  else filtered = filtered.slice(0, 5);
 
   const comment = buildComment(income, expense, savings, savingsRatio, catTotals);
+  const cardStyle = (key) => f === key
+    ? "background:var(--blue);color:white;cursor:pointer;"
+    : "cursor:pointer;";
+  const labelStyle = (key) => f === key ? "color:rgba(255,255,255,0.8);" : "";
+  const valueStyle = (key) => f === key ? "color:white;" : "";
 
   return `
-  <header class="page-header">
-    <p class="sub">${monthLabel(state.viewMonth)}</p>
-    <h1>우리집 가계부</h1>
+  <header class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <p class="sub">${monthLabel(state.viewMonth)}</p>
+      <h1 style="margin:4px 0 0;">우리집 가계부</h1>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button data-month-shift="-1" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;cursor:pointer;">‹</button>
+      <button data-month-shift="1" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;cursor:pointer;">›</button>
+    </div>
   </header>
   <div class="grid-3">
-    <div class="metric-card"><p class="label">수입</p><p class="value">${fmt(income)}원</p></div>
-    <div class="metric-card"><p class="label">지출</p><p class="value">${fmt(expense)}원</p></div>
-    <div class="metric-card"><p class="label">저축/투자</p><p class="value">${fmt(savings)}원</p></div>
+    <div class="metric-card" data-filter="수입" style="${cardStyle("수입")}">
+      <p class="label" style="${labelStyle("수입")}">수입</p>
+      <p class="value" style="${valueStyle("수입")}">${fmt(income)}원</p>
+    </div>
+    <div class="metric-card" data-filter="지출" style="${cardStyle("지출")}">
+      <p class="label" style="${labelStyle("지출")}">지출</p>
+      <p class="value" style="${valueStyle("지출")}">${fmt(expense)}원</p>
+    </div>
+    <div class="metric-card" data-filter="저축/투자" style="${cardStyle("저축/투자")}">
+      <p class="label" style="${labelStyle("저축/투자")}">저축</p>
+      <p class="value" style="${valueStyle("저축/투자")}">${fmt(savings)}원</p>
+    </div>
   </div>
   <div class="section">
     <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
@@ -282,9 +313,12 @@ function renderHome() {
     <div class="progress-bar"><div class="fill" style="width:${Math.min(100, (savingsRatio / state.goals.savingsRatio) * 100)}%"></div></div>
   </div>
   <div class="section">
-    <h3>최근 거래</h3>
-    ${recent.length === 0 ? '<p class="empty-state">아직 입력된 거래가 없어요.</p>' :
-      recent.map(t => `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h3 style="margin:0;">${f ? f + " 목록" : "최근 거래"}</h3>
+      ${f ? '<button data-filter="null" style="font-size:12px;color:var(--text-secondary);border:none;background:none;cursor:pointer;">전체보기</button>' : ""}
+    </div>
+    ${filtered.length === 0 ? '<p class="empty-state">거래 내역이 없어요.</p>' :
+      filtered.map(t => `
       <div class="list-row">
         <div class="left">
           <div>
@@ -570,6 +604,24 @@ function renderSettings() {
 function bindEvents() {
   document.querySelectorAll("[data-tab]").forEach(btn => {
     btn.onclick = () => { state.tab = btn.dataset.tab; render(); };
+  });
+
+  // 홈 카드 필터 클릭
+  document.querySelectorAll("[data-filter]").forEach(btn => {
+    btn.onclick = () => {
+      const val = btn.dataset.filter;
+      state.homeFilter = val === "null" || val === state.homeFilter ? null : val;
+      render();
+    };
+  });
+
+  // 홈 월 이동 버튼
+  document.querySelectorAll("[data-month-shift]").forEach(btn => {
+    btn.onclick = () => {
+      state.viewMonth = shiftMonth(state.viewMonth, parseInt(btn.dataset.monthShift));
+      state.homeFilter = null;
+      render();
+    };
   });
 
   // 홈: 수정/삭제 버튼

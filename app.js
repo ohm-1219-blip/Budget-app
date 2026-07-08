@@ -164,10 +164,12 @@ function summarize(ym) {
   const catTotals = {};
   for (const t of list) {
     if (t.type === "수입") income += t.amount;
-    else if (t.type === "지출") {
-      expense += t.amount;
+    else if (t.type === "저축") {
+      savings += t.amount;
+    } else if (t.type === "지출") {
       if (t.categoryMain === "저축/투자") savings += t.amount;
       else {
+        expense += t.amount;
         catTotals[t.categoryMain] = (catTotals[t.categoryMain] || 0) + t.amount;
       }
     }
@@ -270,7 +272,7 @@ function renderHome() {
 
   if (f === "수입") filtered = filtered.filter(t => t.type === "수입");
   else if (f === "지출") filtered = filtered.filter(t => t.type === "지출" && t.categoryMain !== "저축/투자");
-  else if (f === "저축/투자") filtered = filtered.filter(t => t.categoryMain === "저축/투자");
+  else if (f === "저축/투자") filtered = filtered.filter(t => t.type === "저축" || t.categoryMain === "저축/투자");
   else filtered = filtered.slice(0, 5);
 
   const comment = buildComment(income, expense, savings, savingsRatio, catTotals);
@@ -359,7 +361,7 @@ function buildComment(income, expense, savings, savingsRatio, catTotals) {
 function renderInput() {
   const d = state.draft;
   const isEditing = !!state.editingTxn;
-  const activeCats = d.type === "수입" ? INCOME_CATEGORIES : CATEGORIES;
+  const activeCats = d.type === "수입" ? INCOME_CATEGORIES : d.type === "저축" ? { "저축/투자": CATEGORIES["저축/투자"] } : CATEGORIES;
   const subOptions = activeCats[d.categoryMain] || Object.values(activeCats)[0] || [];
 
   return `
@@ -370,6 +372,7 @@ function renderInput() {
   <div class="type-toggle">
     <button data-type="지출" class="${d.type === "지출" ? "active expense" : ""}">지출</button>
     <button data-type="수입" class="${d.type === "수입" ? "active income" : ""}">수입</button>
+    <button data-type="저축" class="${d.type === "저축" ? "active income" : ""}">저축</button>
     <button data-type="이체" class="${d.type === "이체" ? "active" : ""}">이체</button>
   </div>
   <div class="amount-input">
@@ -655,9 +658,14 @@ function bindEvents() {
     document.querySelectorAll("[data-type]").forEach(btn => {
       btn.onclick = () => {
         state.draft.type = btn.dataset.type;
-        const cats = btn.dataset.type === "수입" ? INCOME_CATEGORIES : CATEGORIES;
-        state.draft.categoryMain = Object.keys(cats)[0];
-        state.draft.categorySub = Object.values(cats)[0][0];
+        if (btn.dataset.type === "저축") {
+          state.draft.categoryMain = "저축/투자";
+          state.draft.categorySub = "적금";
+        } else {
+          const cats = btn.dataset.type === "수입" ? INCOME_CATEGORIES : CATEGORIES;
+          state.draft.categoryMain = Object.keys(cats)[0];
+          state.draft.categorySub = Object.values(cats)[0][0];
+        }
         render();
       };
     });

@@ -419,19 +419,19 @@ function renderInput() {
         <button data-currency="KRW" style="flex:1;padding:6px 0;border-radius:8px;border:1px solid var(--border);font-size:13px;cursor:pointer;${d.currency === "KRW" ? "background:var(--blue);color:white;border-color:var(--blue);" : "background:none;"}">한화 (₩)</button>
         <button data-currency="USD" style="flex:1;padding:6px 0;border-radius:8px;border:1px solid var(--border);font-size:13px;cursor:pointer;${d.currency === "USD" ? "background:var(--blue);color:white;border-color:var(--blue);" : "background:none;"}">달러 ($)</button>
       </div>
-      ${d.currency === "USD" ? `
-      <div class="field-row">
-        <label>달러 금액</label>
-        <input type="number" id="usdAmount" placeholder="예: 1" value="${d.usdAmount}" step="0.01" />
+      <div id="usdFields" style="display:${d.currency === "USD" ? "block" : "none"};">
+        <div class="field-row">
+          <label>달러 금액</label>
+          <input type="number" id="usdAmount" placeholder="예: 1" value="${d.usdAmount}" step="0.01" />
+        </div>
+        <div class="field-row">
+          <label>환율</label>
+          <input type="number" id="exchangeRate" placeholder="예: 1300" value="${d.exchangeRate}" />
+        </div>
+        <div id="usdPreview" style="background:#eaf1ff;border-radius:8px;padding:8px 12px;font-size:13px;color:var(--blue);display:${d.usdAmount && d.exchangeRate ? "block" : "none"};">
+          $${d.usdAmount || 0} × ${d.exchangeRate ? parseInt(d.exchangeRate).toLocaleString() : 0}원 = <strong id="usdResult">${d.usdAmount && d.exchangeRate ? fmt(parseFloat(d.usdAmount) * parseFloat(d.exchangeRate)) : 0}원</strong>
+        </div>
       </div>
-      <div class="field-row">
-        <label>환율</label>
-        <input type="number" id="exchangeRate" placeholder="예: 1300" value="${d.exchangeRate}" />
-      </div>
-      ${d.usdAmount && d.exchangeRate ? `
-      <div style="background:#eaf1ff;border-radius:8px;padding:8px 12px;font-size:13px;color:var(--blue);">
-        $${parseFloat(d.usdAmount).toFixed(2)} × ${parseInt(d.exchangeRate).toLocaleString()}원 = <strong>${fmt(parseFloat(d.usdAmount) * parseFloat(d.exchangeRate))}원</strong>
-      </div>` : ""}` : ""}
     </div>` : ""}
   </div>
   <div class="section">
@@ -712,21 +712,46 @@ function bindEvents() {
     const memo = document.getElementById("memo");
     if (memo) memo.oninput = (e) => state.draft.memo = e.target.value;
 
-    // 저축 통화 탭
+    // 저축 통화 탭 (render 없이 DOM 직접 조작)
     document.querySelectorAll("[data-currency]").forEach(btn => {
-      btn.onclick = () => { state.draft.currency = btn.dataset.currency; render(); };
+      btn.onclick = () => {
+        state.draft.currency = btn.dataset.currency;
+        const usdFields = document.getElementById("usdFields");
+        if (usdFields) usdFields.style.display = btn.dataset.currency === "USD" ? "block" : "none";
+        document.querySelectorAll("[data-currency]").forEach(b => {
+          b.style.background = b.dataset.currency === btn.dataset.currency ? "var(--blue)" : "none";
+          b.style.color = b.dataset.currency === btn.dataset.currency ? "white" : "";
+          b.style.borderColor = b.dataset.currency === btn.dataset.currency ? "var(--blue)" : "var(--border)";
+        });
+      };
     });
     const usdAmount = document.getElementById("usdAmount");
     if (usdAmount) usdAmount.oninput = (e) => {
       state.draft.usdAmount = e.target.value;
-      if (state.draft.exchangeRate) state.draft.amount = String(parseFloat(e.target.value || 0) * parseFloat(state.draft.exchangeRate));
-      render();
+      const rate = parseFloat(state.draft.exchangeRate) || 0;
+      const usd = parseFloat(e.target.value) || 0;
+      const krw = usd * rate;
+      state.draft.amount = String(krw);
+      const preview = document.getElementById("usdPreview");
+      const result = document.getElementById("usdResult");
+      if (preview && result && usd && rate) {
+        preview.style.display = "block";
+        result.textContent = fmt(krw) + "원";
+      } else if (preview) preview.style.display = "none";
     };
     const exchangeRate = document.getElementById("exchangeRate");
     if (exchangeRate) exchangeRate.oninput = (e) => {
       state.draft.exchangeRate = e.target.value;
-      if (state.draft.usdAmount) state.draft.amount = String(parseFloat(state.draft.usdAmount || 0) * parseFloat(e.target.value));
-      render();
+      const usd = parseFloat(state.draft.usdAmount) || 0;
+      const rate = parseFloat(e.target.value) || 0;
+      const krw = usd * rate;
+      state.draft.amount = String(krw);
+      const preview = document.getElementById("usdPreview");
+      const result = document.getElementById("usdResult");
+      if (preview && result && usd && rate) {
+        preview.style.display = "block";
+        result.textContent = fmt(krw) + "원";
+      } else if (preview) preview.style.display = "none";
     };
     const saveBtn = document.getElementById("saveBtn");
     if (saveBtn) saveBtn.onclick = saveTxn;

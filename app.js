@@ -133,7 +133,10 @@ const state = {
     categorySub: "외식",
     payment: "신용카드",
     memo: "",
-    isFixed: false
+    isFixed: false,
+    currency: "KRW",
+    usdAmount: "",
+    exchangeRate: ""
   }
 };
 
@@ -410,6 +413,26 @@ function renderInput() {
       <label>메모</label>
       <input type="text" id="memo" placeholder="메모 입력" value="${d.memo}" />
     </div>
+    ${d.type === "저축" ? `
+    <div style="margin-top:4px;margin-bottom:8px;">
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button data-currency="KRW" style="flex:1;padding:6px 0;border-radius:8px;border:1px solid var(--border);font-size:13px;cursor:pointer;${d.currency === "KRW" ? "background:var(--blue);color:white;border-color:var(--blue);" : "background:none;"}">한화 (₩)</button>
+        <button data-currency="USD" style="flex:1;padding:6px 0;border-radius:8px;border:1px solid var(--border);font-size:13px;cursor:pointer;${d.currency === "USD" ? "background:var(--blue);color:white;border-color:var(--blue);" : "background:none;"}">달러 ($)</button>
+      </div>
+      ${d.currency === "USD" ? `
+      <div class="field-row">
+        <label>달러 금액</label>
+        <input type="number" id="usdAmount" placeholder="예: 1" value="${d.usdAmount}" step="0.01" />
+      </div>
+      <div class="field-row">
+        <label>환율</label>
+        <input type="number" id="exchangeRate" placeholder="예: 1300" value="${d.exchangeRate}" />
+      </div>
+      ${d.usdAmount && d.exchangeRate ? `
+      <div style="background:#eaf1ff;border-radius:8px;padding:8px 12px;font-size:13px;color:var(--blue);">
+        $${parseFloat(d.usdAmount).toFixed(2)} × ${parseInt(d.exchangeRate).toLocaleString()}원 = <strong>${fmt(parseFloat(d.usdAmount) * parseFloat(d.exchangeRate))}원</strong>
+      </div>` : ""}` : ""}
+    </div>` : ""}
   </div>
   <div class="section">
     <button class="btn-primary" id="saveBtn">${isEditing ? "수정 완료" : "저장"}</button>
@@ -651,7 +674,7 @@ function bindEvents() {
     const cancelBtn = document.getElementById("cancelEditBtn");
     if (cancelBtn) cancelBtn.onclick = () => {
       state.editingTxn = null;
-      state.draft = { type: "지출", amount: "", date: new Date().toISOString().slice(0, 10), categoryMain: "식비", categorySub: "외식", payment: "신용카드", memo: "", isFixed: false };
+      state.draft = { type: "지출", amount: "", date: new Date().toISOString().slice(0, 10), categoryMain: "식비", categorySub: "외식", payment: "신용카드", memo: "", isFixed: false, currency: "KRW", usdAmount: "", exchangeRate: "" };
       state.tab = "home";
       render();
     };
@@ -688,6 +711,23 @@ function bindEvents() {
     if (isFixed) isFixed.onchange = (e) => state.draft.isFixed = e.target.checked;
     const memo = document.getElementById("memo");
     if (memo) memo.oninput = (e) => state.draft.memo = e.target.value;
+
+    // 저축 통화 탭
+    document.querySelectorAll("[data-currency]").forEach(btn => {
+      btn.onclick = () => { state.draft.currency = btn.dataset.currency; render(); };
+    });
+    const usdAmount = document.getElementById("usdAmount");
+    if (usdAmount) usdAmount.oninput = (e) => {
+      state.draft.usdAmount = e.target.value;
+      if (state.draft.exchangeRate) state.draft.amount = String(parseFloat(e.target.value || 0) * parseFloat(state.draft.exchangeRate));
+      render();
+    };
+    const exchangeRate = document.getElementById("exchangeRate");
+    if (exchangeRate) exchangeRate.oninput = (e) => {
+      state.draft.exchangeRate = e.target.value;
+      if (state.draft.usdAmount) state.draft.amount = String(parseFloat(state.draft.usdAmount || 0) * parseFloat(e.target.value));
+      render();
+    };
     const saveBtn = document.getElementById("saveBtn");
     if (saveBtn) saveBtn.onclick = saveTxn;
   }
@@ -813,12 +853,15 @@ async function saveTxn() {
       payment: d.payment,
       memo: d.memo,
       isFixed: d.isFixed,
+      currency: d.currency || "KRW",
+      usdAmount: d.currency === "USD" ? parseFloat(d.usdAmount) || 0 : 0,
+      exchangeRate: d.currency === "USD" ? parseFloat(d.exchangeRate) || 0 : 0,
       createdAt: new Date().toISOString()
     };
     await dbPut(item);
     state.txns.push(item);
   }
-  state.draft = { type: "지출", amount: "", date: new Date().toISOString().slice(0, 10), categoryMain: "식비", categorySub: "외식", payment: "신용카드", memo: "", isFixed: false };
+  state.draft = { type: "지출", amount: "", date: new Date().toISOString().slice(0, 10), categoryMain: "식비", categorySub: "외식", payment: "신용카드", memo: "", isFixed: false, currency: "KRW", usdAmount: "", exchangeRate: "" };
   state.tab = "home";
   render();
 }

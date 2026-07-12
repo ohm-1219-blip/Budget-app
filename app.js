@@ -8,6 +8,7 @@ const CATEGORIES = {
   "보험": ["보험료"],
   "교육": ["학원", "교재"],
   "여가": ["취미", "여행", "구독"],
+  "구독료": ["넷플릭스", "유튜브프리미엄", "스포티파이", "왓챠", "디즈니+", "기타구독"],
   "의류": ["의류", "잡화"],
   "경조사": ["경조사비"],
   "저축/투자": ["적금", "투자"],
@@ -327,7 +328,7 @@ function renderHome() {
       <div class="list-row">
         <div class="left">
           <div>
-            <p class="name">${t.categoryMain} &gt; ${t.categorySub}</p>
+            <p class="name">${t.isFixed ? '<span style="font-size:12px;background:#fff3cd;color:#856404;border-radius:4px;padding:1px 5px;margin-right:4px;">📌고정</span>' : ""}${t.categoryMain} &gt; ${t.categorySub}</p>
             <p class="meta">${t.date} · ${t.payment}${t.memo ? " · " + t.memo : ""}</p>
           </div>
         </div>

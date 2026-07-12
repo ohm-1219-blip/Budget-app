@@ -8,7 +8,7 @@ const CATEGORIES = {
   "보험": ["보험료"],
   "교육": ["학원", "교재"],
   "여가": ["취미", "여행", "구독"],
-  "구독료": ["넷플릭스", "유튜브프리미엄", "스포티파이", "왓챠", "디즈니+", "기타구독"],
+  "구독료": ["넷플릭스", "유튜브프리미엄", "챗GPT", "왓챠", "제미니","클로드ai","네이버플러스","기타구독"],
   "의류": ["의류", "잡화"],
   "경조사": ["경조사비"],
   "저축/투자": ["적금", "투자"],
@@ -272,7 +272,12 @@ function renderHome() {
   // 필터에 따라 목록 결정
   let filtered = [...state.txns]
     .filter(t => t.date.slice(0, 7) === state.viewMonth)
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort((a, b) => {
+      // 고정지출 먼저, 그다음 날짜 최신순
+      if (a.isFixed && !b.isFixed) return -1;
+      if (!a.isFixed && b.isFixed) return 1;
+      return b.date.localeCompare(a.date);
+    });
 
   if (f === "수입") filtered = filtered.filter(t => t.type === "수입");
   else if (f === "지출") filtered = filtered.filter(t => t.type === "지출" && t.categoryMain !== "저축/투자");
